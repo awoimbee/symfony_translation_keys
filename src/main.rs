@@ -1,25 +1,17 @@
-use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 mod trad_key;
-use trad_key::TradKey;
 
 mod file_finder;
 
 fn main() {
     let project_root = "../meero/master";
 
-    let test = trad_key::load_trans_keys(&PathBuf::from(project_root));
+    let trad_keys = trad_key::load_trans_keys(&PathBuf::from(project_root));
 
-    // for (&key, &value) in t.range::<&str, _>("tes"..="tes"..) {
-    //     println!("{}: {}", key, value);
-    // }
+    // vec of keys (app.form.recruitment.legal.company_id, ...)
+    // vec of partial keys (admin., admin.form., admin.form.recruitment., ...)
+    // regex all keys & partial keys everywhere & count occurences -> re.find_iter(txt).count()
+    // print keys & occurences (w/ some processing to make things pretty & readable)
 
-    // let mut map = BTreeMap::new();
-    // map.insert(3, "a");
-    // map.insert(5, "b");
-    // map.insert(8, "c");
-    // for (&key, &value) in map.range((Included(&4), Included(&8))) {
-    //     println!("{}: {}", key, value);
-    // }
-
+    // let c = s.matches(t).count();
 }
