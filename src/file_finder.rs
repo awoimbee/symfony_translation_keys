@@ -28,7 +28,9 @@ fn path_to_bytes<'a>(p: &'a Path) -> &'a [u8] {
 
 fn allowed_file(fname: &Path, allow_exts: &[&str]) -> bool {
     let fname = path_to_bytes(fname);
-    allow_exts.iter().any(|&ext| fname.ends_with(ext.as_bytes()))
+    allow_exts
+        .iter()
+        .any(|&ext| fname.ends_with(ext.as_bytes()))
 }
 
 /// finds files inside `root` w/ names that matches

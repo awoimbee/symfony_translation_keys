@@ -1,13 +1,18 @@
-use std::path::{PathBuf, Path};
+use std::path::{Path, PathBuf};
 
-mod trad_key;
 mod file_finder;
+mod trad_key;
 
-use std::sync::atomic::{AtomicUsize, Ordering};
 use rayon::prelude::*;
+use std::sync::atomic::Ordering;
 
 use std::fs::File;
 use std::io::prelude::*;
+
+use ansi_term::Colour;
+use trad_key::Key;
+
+use clap::{App, Arg};
 // use std::path::Path;
 
 pub fn read_file(file_name: &Path) -> Option<String> {
@@ -31,8 +36,6 @@ pub fn read_file(file_name: &Path) -> Option<String> {
     Some(contents)
 }
 
-
-
 fn project_subfolder(p_root: &Path, sub_d: &str) -> PathBuf {
     let mut new = p_root.to_owned();
     new.push(sub_d);
@@ -40,14 +43,65 @@ fn project_subfolder(p_root: &Path, sub_d: &str) -> PathBuf {
 }
 
 fn main() {
-    let project_root = PathBuf::from("../meero/master");
-    let src = project_subfolder(&project_root, "src");
-    let templates = project_subfolder(&project_root, "templates");
+    let args = App::new("translations checker")
+        .version("0.2")
+        .author("Arthur W. <arthur.woimbee@gmail.com>")
+        .about("Find unused translations in symfony project")
+        .arg(
+            Arg::with_name("project_root")
+                .short("p")
+                .long("project_root")
+                .value_name("FOLDER")
+                .help("Where to work")
+                .takes_value(true)
+                .required(true),
+        )
+        .arg(
+            Arg::with_name("translations")
+                .long("trans_fd")
+                .short("t")
+                .value_name("FILE|FOLDER")
+                .help("Where to load translation keys (rel. to p. root)")
+                .takes_value(true)
+                .multiple(true),
+        )
+        .arg(
+            Arg::with_name("src")
+                .short("s")
+                .long("src")
+                .value_name("FILE|FOLDER")
+                .takes_value(true)
+                .multiple(true)
+                .help("where to search for translation keys usage (rel. to p. root)"),
+        )
+        .get_matches();
 
-    let trad_keys = trad_key::load_trans_keys(&PathBuf::from(project_root));
-    let files = file_finder::f_find(&[&src, &templates], &[""]);
+    let project_root = PathBuf::from(args.value_of("project_root").unwrap());
+    let src_owned = match args.values_of("src") {
+        Some(values) => values
+            .map(|v| project_subfolder(&project_root, v))
+            .collect(),
+        None => vec![
+            project_subfolder(&project_root, "src"),
+            project_subfolder(&project_root, "templates"),
+        ],
+    };
+    let translations_owned = match args.values_of("translations") {
+        Some(values) => values
+            .map(|v| project_subfolder(&project_root, v))
+            .collect(),
+        None => vec![project_subfolder(&project_root, "translations")],
+    };
+    let src = src_owned.iter().map(|p| p.as_ref()).collect::<Vec<&Path>>();
+    let translations = translations_owned
+        .iter()
+        .map(|p| p.as_ref())
+        .collect::<Vec<&Path>>();
 
-    files.into_par_iter().for_each(|file_path|{
+    let (origins, mut trad_keys) = trad_key::load_yaml::load_trans_keys(&translations);
+    let files = file_finder::f_find(&src, &[""]);
+
+    files.into_par_iter().for_each(|file_path| {
         let contents = match read_file(&file_path) {
             Some(c) => c,
             None => return,
@@ -57,11 +111,63 @@ fn main() {
             t_k.uses.fetch_add(matches, Ordering::Relaxed);
         }
     });
-    trad_keys.iter().for_each(|k| println!("{}: {}", k.key, k.uses.load(Ordering::Relaxed)));
 
-    // vec of keys (app.form.recruitment.legal.company_id, ...)
-    // vec of partial keys (admin., admin.form., admin.form.recruitment., ...)
-    // let occurences = s.matches(t).count();
-    // print keys & occurences (w/ some processing to make things pretty & readable)
+    let color_grad = [
+        Colour::White,
+        Colour::Blue,
+        Colour::Cyan,
+        Colour::Green,
+        Colour::Yellow,
+        Colour::Purple,
+        Colour::Red,
+    ];
+    let mut pretty_output: Vec<Vec<Key>> = vec![Vec::new(); color_grad.len()];
 
+    for i in 0..trad_keys.len() {
+        if trad_keys[i].partial == true {
+            let mut calc_uses = 0;
+            let mut j = i;
+            while {
+                j += 1;
+                j < trad_keys.len() && trad_keys[j].key.starts_with(&trad_keys[i].key)
+            } {
+                if trad_keys[j].partial == true {
+                    continue;
+                };
+                calc_uses += trad_keys[j].uses.load(Ordering::Relaxed);
+            }
+            if trad_keys[i].uses.load(Ordering::Relaxed) == calc_uses {
+                trad_keys[i].trusted += 1;
+                trad_keys[i..j].iter_mut().for_each(|k| k.trusted += 1);
+            }
+        } else if trad_keys[i].uses.load(Ordering::Relaxed) == 0 {
+            let index = trad_keys[i].trusted as usize;
+            let out = if index < color_grad.len() {
+                &mut pretty_output[index]
+            } else {
+                &mut pretty_output[color_grad.len() - 1]
+            };
+            out.push(trad_keys[i].clone());
+        }
+    }
+
+    println!("All keys:");
+    for k in trad_keys {
+        println!(
+            "occurences: {:5} trust: {:2} Key: '{:80}' Origin: {}",
+            k.uses.load(Ordering::Relaxed), k.trusted, k.key, origins[k.origin as usize]
+        );
+    }
+
+    println!("{}", Colour::Red.bold().paint("Keys to remove:"));
+    for (trust_lvl, contents) in pretty_output.iter().enumerate() {
+        let out = contents
+            .iter()
+            .map(|k| format!("\t{:80} origin: {}\n", k.key, origins[k.origin as usize]))
+            .collect::<String>();
+        if out.len() != 0 {
+            println!("Trust: {}", trust_lvl);
+            println!("{}", color_grad[trust_lvl].paint(out));
+        }
+    }
 }

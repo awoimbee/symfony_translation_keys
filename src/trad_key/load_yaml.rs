@@ -1,55 +1,36 @@
 use ansi_term::Colour;
+use std::borrow::Cow;
 use std::error::Error;
 use std::io::Read;
 use std::path::Path;
 use yaml_rust::Yaml;
 use yaml_rust::YamlLoader;
-use std::borrow::Cow;
-use std::sync::atomic::AtomicUsize;
 
-use super::file_finder::f_find;
+use super::Key;
+use crate::file_finder::f_find;
 
-#[derive(Debug)]
-pub struct Key {
-    pub uses: AtomicUsize,
-    pub key: String,
-    pub partial: bool,
-}
-
-impl Key {
-    pub fn new(key: &str, partial: bool) -> Self {
-        let key = key.to_owned();
-        Key {
-            uses: AtomicUsize::new(0),
-            key,
-            partial,
-        }
-    }
-}
-
-fn yaml_to_vec(yaml: &Yaml, key: &mut String, keys: &mut Vec<Key>) {
+fn yaml_to_vec<'a>(yaml: &'a Yaml, key: &mut Vec<Cow<'a, str>>, keys: &mut Vec<Key>, origin: u8) {
     if yaml.is_badvalue() {
-        eprintln!("Bad value: {}", key);
+        eprintln!("Bad value: {}", key.join("."));
         return;
     }
     let is_end_of_branch = yaml.as_hash().is_none();
-    keys.push(Key::new(key, !is_end_of_branch));
-    if is_end_of_branch{ return };
+    keys.push(Key::new(key.join("."), !is_end_of_branch, origin));
+    if is_end_of_branch {
+        return;
+    };
     for (sub_key, sub_yaml) in yaml.as_hash().unwrap() {
         let sub_key = if let Some(s) = sub_key.as_str() {
             Cow::from(s)
         } else if let Some(i) = sub_key.as_i64() {
             Cow::from(i.to_string())
         } else {
-            println!("Invalid key: {}.{:?}", key, sub_key);
+            println!("Invalid key: {}.{:?}", key.join("."), sub_key);
             continue;
         };
-        if key.len() != 0 {
-            key.push('.');
-        }
-        key.push_str(&sub_key);
-        yaml_to_vec(sub_yaml, key, keys);
-        key.truncate(key.rfind('.').unwrap_or(0));
+        key.push(sub_key);
+        yaml_to_vec(sub_yaml, key, keys, origin);
+        key.pop().unwrap();
     }
 }
 
@@ -62,14 +43,14 @@ fn read_to_yaml(file_path: &Path) -> Result<Vec<Yaml>, Box<dyn Error>> {
     Ok(yaml)
 }
 
-pub fn load_trans_keys(proj_root: &Path) -> Vec<Key> {
-    let mut trans_roots = proj_root.to_owned();
-    trans_roots.push("translations");
-    println!("looking into: {:?}", trans_roots);
-    let trans_files = f_find(&[&trans_roots], &[".fr.yaml"]);
+pub fn load_trans_keys(wher: &[&Path]) -> (Vec<String>, Vec<Key>) {
+    let trans_files = f_find(wher, &[".fr.yaml"]);
     let mut keys = Vec::with_capacity(20000);
+    let mut origins = Vec::new();
     for f in trans_files {
-        println!("file: {:?}", f);
+        let f_str = f.to_string_lossy().to_string();
+        println!("loading file: {}", f_str);
+        origins.push(f_str);
         let yaml = match read_to_yaml(&f) {
             Ok(yaml) => yaml,
             Err(e) => {
@@ -81,9 +62,11 @@ pub fn load_trans_keys(proj_root: &Path) -> Vec<Key> {
                 continue;
             }
         };
-        yaml_to_vec(&yaml[0], &mut String::with_capacity(100), &mut keys);
+        yaml_to_vec(&yaml[0], &mut Vec::with_capacity(20), &mut keys, (origins.len() - 1) as u8);
     }
     keys.sort_by(|a, b| a.key.partial_cmp(&b.key).unwrap());
+    // should I warn about duplicates ?
+    // btw this is full yolo, maybe `partial` is different
     keys.dedup_by(|a, b| a.key == b.key);
-    keys
+    (origins, keys)
 }
