@@ -7,51 +7,60 @@ fn allowed_dir(dname: &Path) -> bool {
     !dname.ends_with("/.git") && !dname.ends_with("/vendor") && !dname.ends_with("/var/cache")
 }
 
-fn allowed_file(fname: &Path, allow_exts: &[&str]) -> bool {
-    let fname = fname.as_os_str().as_bytes();
-    allow_exts.iter().any(|ext| {
-        // A hand-made 'ends_with()' implementation (/!\ Path::ends_with != str::ends_with)
-        let ext = ext.as_bytes();
-        let mut f_len = fname.len();
-        let mut ext_len = ext.len();
-        while f_len != 0 && ext_len != 0 {
-            f_len -= 1;
-            ext_len -= 1;
-            if fname[f_len] as u8 != ext[ext_len] as u8 {
-                return false;
-            }
+#[cfg(unix)]
+fn path_to_bytes<'a>(p: &'a Path) -> &'a [u8] {
+    p.as_os_str().as_bytes()
+}
+#[cfg(windows)]
+fn path_to_bytes<'a>(p: &'a Path) -> &'a [u8] {
+    match p.to_str() {
+        Some(s) => s.as_bytes(),
+        None => {
+            eprintln!("Invalide file name, skipping: {}", p.to_string_lossy());
+            "".as_bytes()
         }
-        true
-    })
+    }
+}
+#[cfg(all(not(unix), not(windows)))]
+fn path_to_bytes<'a>(p: &'a Path) -> &'a [u8] {
+    compile_error!("Not implemented for this target");
+}
+
+fn allowed_file(fname: &Path, allow_exts: &[&str]) -> bool {
+    let fname = path_to_bytes(fname);
+    allow_exts.iter().any(|&ext| fname.ends_with(ext.as_bytes()))
 }
 
 /// finds files inside `root` w/ names that matches
 /// Performance:
 ///   Good enough. It's not really slow and it permits the use of .into_par_iter()
-pub fn f_find(root: &Path, allow_exts: &[&str]) -> Vec<PathBuf> {
+pub fn f_find(roots: &[&Path], allow_exts: &[&str]) -> Vec<PathBuf> {
     let mut file_stack = Vec::new();
     let mut dir_stack = Vec::new();
-    let root = PathBuf::from(root);
-    let root_meta = match fs::metadata(&root) {
-        Ok(m) => m,
-        Err(e) => panic!("Invalid root dir: {} ({})", root.to_string_lossy(), e),
-    };
-    if root_meta.is_dir() {
-        dir_stack.push(root)
-    } else {
-        file_stack.push(root)
-    };
-
+    // handle roots
+    for &r in roots {
+        let meta = match fs::metadata(r) {
+            Ok(m) => m,
+            Err(e) => {
+                eprintln!("Couldn't read: {} ({})", r.to_string_lossy(), e);
+                continue;
+            }
+        };
+        #[rustfmt::skip]
+        let stack = if meta.is_dir() { &mut dir_stack } else { &mut file_stack };
+        stack.push(r.to_owned());
+    }
+    // handle subdirs
     while let Some(dir) = dir_stack.pop() {
         let dir_reader = match fs::read_dir(&dir) {
             Ok(dr) => dr,
             Err(e) => {
-                println!("Couldn't read {}: {}", dir.to_string_lossy(), e);
+                println!("Couldn't read: {} ({})", dir.to_string_lossy(), e);
                 continue;
             }
         };
         for f in dir_reader {
-            let f = f.unwrap(); // I dont know/understand why unwrap is necessary here
+            let f = f.unwrap();
             let f_path = f.path();
             let f_meta = f.metadata().unwrap();
             if f_meta.is_file() && allowed_file(&f_path, allow_exts) {
@@ -61,6 +70,5 @@ pub fn f_find(root: &Path, allow_exts: &[&str]) -> Vec<PathBuf> {
             }
         }
     }
-
     file_stack
 }
