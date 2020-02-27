@@ -43,8 +43,8 @@ fn read_to_yaml(file_path: &Path) -> Result<Vec<Yaml>, Box<dyn Error>> {
     Ok(yaml)
 }
 
-pub fn load_trans_keys(wher: &[&Path]) -> (Vec<String>, Vec<Key>) {
-    let trans_files = f_find(wher, &[".fr.yaml"]);
+pub fn load_trans_keys(wher: &[&Path], locale: &str) -> (Vec<String>, Vec<Key>) {
+    let trans_files = f_find(wher, &[&format!(".{}.yaml", locale)]);
     let mut keys = Vec::with_capacity(20000);
     let mut origins = Vec::new();
     for f in trans_files {

@@ -63,6 +63,13 @@ fn main() {
                 .multiple(true)
                 .help("where to search for translation keys usage (rel. to cwd)"),
         )
+        .arg(
+            Arg::with_name("lang")
+                .long("lang")
+                .takes_value(true)
+                .multiple(false)
+                .help("Source language to lookup"),
+        )
         .get_matches();
 
     let project_root = PathBuf::from(env::current_dir().unwrap());
@@ -81,6 +88,10 @@ fn main() {
             .collect(),
         None => vec![project_subfolder(&project_root, "translations")],
     };
+    let lang = match args.value_of("lang") {
+        Some(value) => value,
+        None => "fr",
+    };
     let src = src_owned.iter().map(|p| p.as_ref()).collect::<Vec<&Path>>();
     let translations = translations_owned
         .iter()
@@ -88,7 +99,7 @@ fn main() {
         .collect::<Vec<&Path>>();
 
     /* load translation keys */
-    let (origins, mut trad_keys) = trad_key::load_yaml::load_trans_keys(&translations);
+    let (origins, mut trad_keys) = trad_key::load_yaml::load_trans_keys(&translations, &lang);
 
     /* search for usage of each translation key */
     let files = file_finder::f_find(&src, &[""]);
