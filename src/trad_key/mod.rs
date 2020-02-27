@@ -17,7 +17,7 @@ impl Key {
             uses: AtomicUsize::new(0),
             key,
             partial,
-            origin: origin,
+            origin,
             trusted: 0,
         }
     }

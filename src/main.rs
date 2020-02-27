@@ -72,7 +72,7 @@ fn main() {
         )
         .get_matches();
 
-    let project_root = PathBuf::from(env::current_dir().unwrap());
+    let project_root = env::current_dir().unwrap();
     let src_owned = match args.values_of("src") {
         Some(values) => values
             .map(|v| project_subfolder(&project_root, v))
@@ -126,7 +126,7 @@ fn main() {
     ];
 
     for i in 0..trad_keys.len() {
-        if trad_keys[i].partial == true {
+        if trad_keys[i].partial {
             let mut calc_uses = 0;
             let mut j = i+1;
             while
