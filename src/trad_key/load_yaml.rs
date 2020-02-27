@@ -49,7 +49,6 @@ pub fn load_trans_keys(wher: &[&Path]) -> (Vec<String>, Vec<Key>) {
     let mut origins = Vec::new();
     for f in trans_files {
         let f_str = f.to_string_lossy().to_string();
-        println!("loading file: {}", f_str);
         origins.push(f_str);
         let yaml = match read_to_yaml(&f) {
             Ok(yaml) => yaml,

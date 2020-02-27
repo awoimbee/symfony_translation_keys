@@ -136,24 +136,11 @@ fn main() {
         }
     }
 
-    /* Print */
-    println!("All keys:");
-    for k in trad_keys {
-        println!(
-            "occurences: {:5} trust: {:2} Key: '{:80}' Origin: {}",
-            k.uses.load(Ordering::Relaxed), k.trusted, k.key, origins[k.origin as usize]
-        );
-    }
-
-    println!("{}", Colour::Red.bold().paint("Keys to remove:"));
-    for (trust_lvl, (color, contents)) in pretty_output.iter().enumerate() {
-        let out = contents
-            .iter()
-            .map(|k| format!("\t{:80} origin: {}\n", k.key, origins[k.origin as usize]))
-            .collect::<String>();
-        if out.len() != 0 {
-            println!("Trust: {}", trust_lvl);
-            println!("{}", color.paint(out));
+    let mut output = json::JsonValue::new_array();
+    for (trust_lvl, (_color, contents)) in pretty_output.iter().enumerate() {
+        for k in contents {
+            output.push(json::object!{"key" => k.key.clone(), "trust" => trust_lvl, "origin" => origins[k.origin as usize].clone()}).unwrap();
         }
     }
+    print!("{}", json::stringify(output));
 }
