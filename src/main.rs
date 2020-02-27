@@ -13,6 +13,7 @@ use ansi_term::Colour;
 use trad_key::Key;
 
 use clap::{App, Arg};
+use std::env;
 
 pub fn read_file(file_name: &Path) -> Option<String> {
     let mut contents = String::new();
@@ -47,35 +48,24 @@ fn main() {
         .author("Arthur W. <arthur.woimbee@gmail.com>")
         .about("Find unused translations in symfony project")
         .arg(
-            Arg::with_name("project_root")
-                .short("p")
-                .long("project_root")
-                .value_name("FOLDER")
-                .help("Where to work")
-                .takes_value(true)
-                .required(true),
-        )
-        .arg(
-            Arg::with_name("translations")
-                .long("trans_fd")
-                .short("t")
+            Arg::with_name("translations-folder")
+                .long("translations-folder")
                 .value_name("FILE|FOLDER")
-                .help("Where to load translation keys (rel. to p. root)")
+                .help("Where to load translation keys (rel. to cwd)")
                 .takes_value(true)
                 .multiple(true),
         )
         .arg(
             Arg::with_name("src")
-                .short("s")
                 .long("src")
                 .value_name("FILE|FOLDER")
                 .takes_value(true)
                 .multiple(true)
-                .help("where to search for translation keys usage (rel. to p. root)"),
+                .help("where to search for translation keys usage (rel. to cwd)"),
         )
         .get_matches();
 
-    let project_root = PathBuf::from(args.value_of("project_root").unwrap());
+    let project_root = PathBuf::from(env::current_dir().unwrap());
     let src_owned = match args.values_of("src") {
         Some(values) => values
             .map(|v| project_subfolder(&project_root, v))
@@ -85,7 +75,7 @@ fn main() {
             project_subfolder(&project_root, "templates"),
         ],
     };
-    let translations_owned = match args.values_of("translations") {
+    let translations_owned = match args.values_of("translations-folder") {
         Some(values) => values
             .map(|v| project_subfolder(&project_root, v))
             .collect(),
