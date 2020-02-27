@@ -13,7 +13,6 @@ use ansi_term::Colour;
 use trad_key::Key;
 
 use clap::{App, Arg};
-// use std::path::Path;
 
 pub fn read_file(file_name: &Path) -> Option<String> {
     let mut contents = String::new();
@@ -98,9 +97,11 @@ fn main() {
         .map(|p| p.as_ref())
         .collect::<Vec<&Path>>();
 
+    /* load translation keys */
     let (origins, mut trad_keys) = trad_key::load_yaml::load_trans_keys(&translations);
-    let files = file_finder::f_find(&src, &[""]);
 
+    /* search for usage of each translation key */
+    let files = file_finder::f_find(&src, &[""]);
     files.into_par_iter().for_each(|file_path| {
         let contents = match read_file(&file_path) {
             Some(c) => c,
@@ -112,45 +113,40 @@ fn main() {
         }
     });
 
-    let color_grad = [
-        Colour::White,
-        Colour::Blue,
-        Colour::Cyan,
-        Colour::Green,
-        Colour::Yellow,
-        Colour::Purple,
-        Colour::Red,
+    /* "Algo" */
+    let mut pretty_output: [(Colour, Vec<Key>); 7] = [
+        (Colour::White, Vec::new()),
+        (Colour::Blue, Vec::new()),
+        (Colour::Cyan, Vec::new()),
+        (Colour::Green, Vec::new()),
+        (Colour::Yellow, Vec::new()),
+        (Colour::Purple, Vec::new()),
+        (Colour::Red, Vec::new()),
     ];
-    let mut pretty_output: Vec<Vec<Key>> = vec![Vec::new(); color_grad.len()];
 
     for i in 0..trad_keys.len() {
         if trad_keys[i].partial == true {
             let mut calc_uses = 0;
-            let mut j = i;
-            while {
-                j += 1;
+            let mut j = i+1;
+            while
                 j < trad_keys.len() && trad_keys[j].key.starts_with(&trad_keys[i].key)
-            } {
-                if trad_keys[j].partial == true {
-                    continue;
+             {
+                if !trad_keys[j].partial {
+                    calc_uses += trad_keys[j].uses.load(Ordering::Relaxed);
                 };
-                calc_uses += trad_keys[j].uses.load(Ordering::Relaxed);
+                j += 1;
             }
             if trad_keys[i].uses.load(Ordering::Relaxed) == calc_uses {
                 trad_keys[i].trusted += 1;
                 trad_keys[i..j].iter_mut().for_each(|k| k.trusted += 1);
             }
         } else if trad_keys[i].uses.load(Ordering::Relaxed) == 0 {
-            let index = trad_keys[i].trusted as usize;
-            let out = if index < color_grad.len() {
-                &mut pretty_output[index]
-            } else {
-                &mut pretty_output[color_grad.len() - 1]
-            };
-            out.push(trad_keys[i].clone());
+            let index = std::cmp::min(trad_keys[i].trusted as usize, pretty_output.len()-1);
+            pretty_output[index].1.push(trad_keys[i].clone());
         }
     }
 
+    /* Print */
     println!("All keys:");
     for k in trad_keys {
         println!(
@@ -160,14 +156,14 @@ fn main() {
     }
 
     println!("{}", Colour::Red.bold().paint("Keys to remove:"));
-    for (trust_lvl, contents) in pretty_output.iter().enumerate() {
+    for (trust_lvl, (color, contents)) in pretty_output.iter().enumerate() {
         let out = contents
             .iter()
             .map(|k| format!("\t{:80} origin: {}\n", k.key, origins[k.origin as usize]))
             .collect::<String>();
         if out.len() != 0 {
             println!("Trust: {}", trust_lvl);
-            println!("{}", color_grad[trust_lvl].paint(out));
+            println!("{}", color.paint(out));
         }
     }
 }
