@@ -128,10 +128,8 @@ fn main() {
     for i in 0..trad_keys.len() {
         if trad_keys[i].partial {
             let mut calc_uses = 0;
-            let mut j = i+1;
-            while
-                j < trad_keys.len() && trad_keys[j].key.starts_with(&trad_keys[i].key)
-             {
+            let mut j = i + 1;
+            while j < trad_keys.len() && trad_keys[j].key.starts_with(&trad_keys[i].key) {
                 if !trad_keys[j].partial {
                     calc_uses += trad_keys[j].uses.load(Ordering::Relaxed);
                 };
@@ -142,7 +140,7 @@ fn main() {
                 trad_keys[i..j].iter_mut().for_each(|k| k.trusted += 1);
             }
         } else if trad_keys[i].uses.load(Ordering::Relaxed) == 0 {
-            let index = std::cmp::min(trad_keys[i].trusted as usize, pretty_output.len()-1);
+            let index = std::cmp::min(trad_keys[i].trusted as usize, pretty_output.len() - 1);
             pretty_output[index].1.push(trad_keys[i].clone());
         }
     }

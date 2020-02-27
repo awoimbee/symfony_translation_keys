@@ -61,7 +61,12 @@ pub fn load_trans_keys(wher: &[&Path], locale: &str) -> (Vec<String>, Vec<Key>) 
                 continue;
             }
         };
-        yaml_to_vec(&yaml[0], &mut Vec::with_capacity(20), &mut keys, (origins.len() - 1) as u8);
+        yaml_to_vec(
+            &yaml[0],
+            &mut Vec::with_capacity(20),
+            &mut keys,
+            (origins.len() - 1) as u8,
+        );
     }
     keys.sort_by(|a, b| a.key.partial_cmp(&b.key).unwrap());
     // should I warn about duplicates ?
