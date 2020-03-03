@@ -90,7 +90,7 @@ fn main() {
     };
     let lang = match args.value_of("lang") {
         Some(value) => value,
-        None => "fr",
+        None => "en",
     };
     let src = src_owned.iter().map(|p| p.as_ref()).collect::<Vec<&Path>>();
     let translations = translations_owned
@@ -151,5 +151,5 @@ fn main() {
             output.push(json::object!{"key" => k.key.clone(), "trust" => trust_lvl, "origin" => origins[k.origin as usize].clone()}).unwrap();
         }
     }
-    print!("{}", json::stringify(output));
+    print!("{}", json::stringify_pretty(output, 2));
 }
