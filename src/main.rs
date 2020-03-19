@@ -79,6 +79,7 @@ fn main() {
             .collect(),
         None => vec![
             project_subfolder(&project_root, "src"),
+            project_subfolder(&project_root, "config"),
             project_subfolder(&project_root, "templates"),
         ],
     };
