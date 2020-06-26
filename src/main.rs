@@ -13,6 +13,7 @@ use ansi_term::Colour;
 use trad_key::Key;
 
 use clap::{App, Arg};
+use std::env;
 
 pub fn read_file(file_name: &Path) -> Option<String> {
     let mut contents = String::new();
@@ -47,49 +48,50 @@ fn main() {
         .author("Arthur W. <arthur.woimbee@gmail.com>")
         .about("Find unused translations in symfony project")
         .arg(
-            Arg::with_name("project_root")
-                .short("p")
-                .long("project_root")
-                .value_name("FOLDER")
-                .help("Where to work")
-                .takes_value(true)
-                .required(true),
-        )
-        .arg(
-            Arg::with_name("translations")
-                .long("trans_fd")
-                .short("t")
+            Arg::with_name("translations-folder")
+                .long("translations-folder")
                 .value_name("FILE|FOLDER")
-                .help("Where to load translation keys (rel. to p. root)")
+                .help("Where to load translation keys (rel. to cwd)")
                 .takes_value(true)
                 .multiple(true),
         )
         .arg(
             Arg::with_name("src")
-                .short("s")
                 .long("src")
                 .value_name("FILE|FOLDER")
                 .takes_value(true)
                 .multiple(true)
-                .help("where to search for translation keys usage (rel. to p. root)"),
+                .help("where to search for translation keys usage (rel. to cwd)"),
+        )
+        .arg(
+            Arg::with_name("lang")
+                .long("lang")
+                .takes_value(true)
+                .multiple(false)
+                .help("Source language to lookup"),
         )
         .get_matches();
 
-    let project_root = PathBuf::from(args.value_of("project_root").unwrap());
+    let project_root = env::current_dir().unwrap();
     let src_owned = match args.values_of("src") {
         Some(values) => values
             .map(|v| project_subfolder(&project_root, v))
             .collect(),
         None => vec![
             project_subfolder(&project_root, "src"),
+            project_subfolder(&project_root, "config"),
             project_subfolder(&project_root, "templates"),
         ],
     };
-    let translations_owned = match args.values_of("translations") {
+    let translations_owned = match args.values_of("translations-folder") {
         Some(values) => values
             .map(|v| project_subfolder(&project_root, v))
             .collect(),
         None => vec![project_subfolder(&project_root, "translations")],
+    };
+    let lang = match args.value_of("lang") {
+        Some(value) => value,
+        None => "en",
     };
     let src = src_owned.iter().map(|p| p.as_ref()).collect::<Vec<&Path>>();
     let translations = translations_owned
@@ -98,7 +100,7 @@ fn main() {
         .collect::<Vec<&Path>>();
 
     /* load translation keys */
-    let (origins, mut trad_keys) = trad_key::load_yaml::load_trans_keys(&translations);
+    let (origins, mut trad_keys) = trad_key::load_yaml::load_trans_keys(&translations, &lang);
 
     /* search for usage of each translation key */
     let files = file_finder::f_find(&src, &[""]);
@@ -125,12 +127,10 @@ fn main() {
     ];
 
     for i in 0..trad_keys.len() {
-        if trad_keys[i].partial == true {
+        if trad_keys[i].partial {
             let mut calc_uses = 0;
-            let mut j = i+1;
-            while
-                j < trad_keys.len() && trad_keys[j].key.starts_with(&trad_keys[i].key)
-             {
+            let mut j = i + 1;
+            while j < trad_keys.len() && trad_keys[j].key.starts_with(&trad_keys[i].key) {
                 if !trad_keys[j].partial {
                     calc_uses += trad_keys[j].uses.load(Ordering::Relaxed);
                 };
@@ -141,29 +141,16 @@ fn main() {
                 trad_keys[i..j].iter_mut().for_each(|k| k.trusted += 1);
             }
         } else if trad_keys[i].uses.load(Ordering::Relaxed) == 0 {
-            let index = std::cmp::min(trad_keys[i].trusted as usize, pretty_output.len()-1);
+            let index = std::cmp::min(trad_keys[i].trusted as usize, pretty_output.len() - 1);
             pretty_output[index].1.push(trad_keys[i].clone());
         }
     }
 
-    /* Print */
-    println!("All keys:");
-    for k in trad_keys {
-        println!(
-            "occurences: {:5} trust: {:2} Key: '{:80}' Origin: {}",
-            k.uses.load(Ordering::Relaxed), k.trusted, k.key, origins[k.origin as usize]
-        );
-    }
-
-    println!("{}", Colour::Red.bold().paint("Keys to remove:"));
-    for (trust_lvl, (color, contents)) in pretty_output.iter().enumerate() {
-        let out = contents
-            .iter()
-            .map(|k| format!("\t{:80} origin: {}\n", k.key, origins[k.origin as usize]))
-            .collect::<String>();
-        if out.len() != 0 {
-            println!("Trust: {}", trust_lvl);
-            println!("{}", color.paint(out));
+    let mut output = json::JsonValue::new_array();
+    for (trust_lvl, (_color, contents)) in pretty_output.iter().enumerate() {
+        for k in contents {
+            output.push(json::object!{"key" => k.key.clone(), "trust" => trust_lvl, "origin" => origins[k.origin as usize].clone()}).unwrap();
         }
     }
+    print!("{}", json::stringify_pretty(output, 2));
 }

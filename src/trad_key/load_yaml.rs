@@ -43,13 +43,12 @@ fn read_to_yaml(file_path: &Path) -> Result<Vec<Yaml>, Box<dyn Error>> {
     Ok(yaml)
 }
 
-pub fn load_trans_keys(wher: &[&Path]) -> (Vec<String>, Vec<Key>) {
-    let trans_files = f_find(wher, &[".fr.yaml"]);
+pub fn load_trans_keys(wher: &[&Path], locale: &str) -> (Vec<String>, Vec<Key>) {
+    let trans_files = f_find(wher, &[&format!(".{}.yaml", locale)]);
     let mut keys = Vec::with_capacity(20000);
     let mut origins = Vec::new();
     for f in trans_files {
         let f_str = f.to_string_lossy().to_string();
-        println!("loading file: {}", f_str);
         origins.push(f_str);
         let yaml = match read_to_yaml(&f) {
             Ok(yaml) => yaml,
@@ -62,7 +61,12 @@ pub fn load_trans_keys(wher: &[&Path]) -> (Vec<String>, Vec<Key>) {
                 continue;
             }
         };
-        yaml_to_vec(&yaml[0], &mut Vec::with_capacity(20), &mut keys, (origins.len() - 1) as u8);
+        yaml_to_vec(
+            &yaml[0],
+            &mut Vec::with_capacity(20),
+            &mut keys,
+            (origins.len() - 1) as u8,
+        );
     }
     keys.sort_by(|a, b| a.key.partial_cmp(&b.key).unwrap());
     // should I warn about duplicates ?
